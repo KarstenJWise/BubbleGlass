@@ -1,0 +1,51 @@
+name: Build BubbleGlass
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the project
+        id: project
+        run: |
+          if [ -f BubbleGlass.zip ]; then unzip -o -q BubbleGlass.zip; fi
+          if [ -f BubbleGlass/settings.gradle.kts ]; then echo "dir=BubbleGlass" >> "$GITHUB_OUTPUT";
+          elif [ -f settings.gradle.kts ]; then echo "dir=." >> "$GITHUB_OUTPUT";
+          else echo "Couldn't find the project. Upload BubbleGlass.zip to the top of the repo." && exit 1; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/BubbleGlass.apk"
+
+      - name: Put the APK on the Releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" BubbleGlass.apk \
+            --repo "${{ github.repository }}" \
+            --title "BubbleGlass (build ${{ github.run_number }})" \
+            --notes "Tap BubbleGlass.apk to download, then open it to install." \
+            --latest
